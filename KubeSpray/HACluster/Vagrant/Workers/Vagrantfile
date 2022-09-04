@@ -1,0 +1,48 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'libvirt'
+ENV['VAGRANT_LOG'] = 'debug'
+
+Vagrant.configure("2") do |config|
+  (0..1).each do |i|
+    config.vm.define "worker-#{i}" do |worker|
+      # Resources
+      worker.vm.box = "generic/fedora33"
+      worker.vm.provider :libvirt do |libvirtvm|
+        libvirtvm.memory = 4096
+        libvirtvm.cpus = 4
+      end
+      
+      # Network
+      workerIp = "192.168.228." + (i + 10).to_s
+      puts 'hello ' + workerIp
+      worker.vm.network :private_network,
+        :ip => workerIp,
+        :libvirt__host_ip => "192.168.228.2",
+        :libvirt__network_name => "automaticworkers",
+        :libvirt__dhcp_enabled => false,
+        :libvirt__forward_mode => "route",
+        :libvirt__domain_name => "worker-#{i}"
+        
+      # Update && upgrade
+      worker.vm.provision "shell", 
+        inline: "yum -y update; echo -n \"worker-#{i}\" > /etc/hostname; echo \"hello from worker #{i}\""
+
+      # Add the created key
+      worker.vm.provision "shell",
+        inline: "mkdir -p /root/.ssh"
+      pubKey = File.readlines("workersKey.pub").first.strip
+      worker.vm.provision "shell",
+        inline: "echo \"#{pubKey}\" >> /root/.ssh/authorized_keys"
+
+      # Install nfs-utils
+      master.vm.provision "shell",
+      inline: "yum install -y nfs-utils" 
+      
+      # Meet kubespray requirements
+      worker.vm.provision "shell",
+        inline: "echo \"net.ipv4.ip_forward = 1\" >> /etc/sysctl.conf; sysctl -p" 
+    end
+  end
+end

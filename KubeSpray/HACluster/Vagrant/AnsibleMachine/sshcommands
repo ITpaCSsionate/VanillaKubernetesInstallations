@@ -1,0 +1,2 @@
+ssh-keygen -R 192.168.50.5
+ssh -i ansiblevmKey root@192.168.50.5

@@ -1,0 +1,56 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'libvirt'
+ENV['VAGRANT_LOG'] = 'debug'
+
+Vagrant.configure("2") do |config|
+  config.vm.define "ansiblevm" do |ansiblevm|
+    # Resources
+    ansiblevm.vm.box = "generic/fedora33"
+    ansiblevm.vm.provider :libvirt do |libvirtvm|
+      libvirtvm.memory = 2048
+      libvirtvm.cpus = 2
+    end
+    
+    # Network
+    ansiblevmIp = "192.168.50.5" 
+    ansiblevm.vm.network :private_network,
+      :ip => ansiblevmIp,
+      :libvirt__host_ip => "192.168.50.2",
+      :libvirt__network_name => "automaticansiblevms",
+      :libvirt__dhcp_enabled => false,
+      :libvirt__forward_mode => "route",
+      :libvirt__domain_name => "ansiblevm"
+      
+    # Update && upgrade
+    ansiblevm.vm.provision "shell", 
+      inline: "yum -y update; echo -n \"ansiblevm\" > /etc/hostname; echo \"hello from ansiblevm \""
+
+    # Add the created key
+    ansiblevm.vm.provision "shell",
+      inline: "mkdir -p /root/.ssh"
+    pubKey = File.readlines("ansiblevmKey.pub").first.strip
+    ansiblevm.vm.provision "shell",
+      inline: "echo \"#{pubKey}\" >> /root/.ssh/authorized_keys"
+    
+    # Meet kubespray requirements
+    ## Ansible, python, jinja installed by installRequirements.sh. The script is run as root
+    ansiblevm.vm.provision "shell",
+      path: "installRequirements.sh"
+    #ansiblevm.vm.provision "file", source: "./installRequirements.sh", destination: "/tmp/script.sh"
+    ## Add the master and workers key 
+    mastersKey = File.read("mastersKey")
+    workersKey = File.read("workersKey")
+    ansiblevm.vm.provision "shell",
+      inline: "echo \"#{workersKey}\" > /root/workersKey"
+    ansiblevm.vm.provision "shell",
+      inline: "echo \"#{mastersKey}\" > /root/mastersKey"
+    
+    # Copy Kubespray directory into the VM
+    ansiblevm.vm.synced_folder "./kubespray", "/mnt/kubespray", type: "rsync"
+
+    ansiblevm.vm.provision "shell",
+      path: "installRequirementsAnsible2.12.sh"
+  end
+end

@@ -1,0 +1,55 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'libvirt'
+ENV['VAGRANT_LOG'] = 'debug'
+
+Vagrant.configure("2") do |config|
+  (0..2).each do |i|
+    config.vm.define "master-#{i}" do |master|
+      # Resources
+      master.vm.box = "generic/fedora33"
+      master.vm.provider :libvirt do |libvirtvm|
+        libvirtvm.memory = 1024
+        libvirtvm.cpus = 1
+        libvirtvm.management_network_address = "192.168.231.0/24"
+        # libvirtvm.management_network_mode = "route"
+      end
+      
+      # Network
+      masterIp = "192.168.230." + (i + 3).to_s
+      puts 'hello ' + masterIp
+      master.vm.network :private_network,
+        :ip => masterIp,
+        :libvirt__host_ip => "192.168.230.2",
+        :libvirt__network_name => "automaticmasters",
+        :libvirt__dhcp_enabled => false,
+        :libvirt__forward_mode => "route",
+        :libvirt__domain_name => "master-#{i}"
+        
+      # Update && upgrade
+      master.vm.provision "shell", 
+        inline: "yum -y update; echo -n \"master-#{i}\" > /etc/hostname; echo \"hello from master #{i}\""
+
+      # Add the created key
+      master.vm.provision "shell",
+        inline: "mkdir -p /root/.ssh"
+      pubKey = File.readlines("mastersKey.pub").first.strip
+      master.vm.provision "shell",
+        inline: "echo \"#{pubKey}\" >> /root/.ssh/authorized_keys"
+
+      # Meet kubespray requirements
+      master.vm.provision "shell",
+        inline: "echo \"net.ipv4.ip_forward = 1\" >> /etc/sysctl.conf; sysctl -p" 
+      
+      # Install nfs-utils
+      master.vm.provision "shell",
+      inline: "yum install -y nfs-utils" 
+      
+      # Disable firewalld
+      master.vm.provision "shell",
+        inline: "systemctl stop firewalld; systemctl disable firewalld; reboot" 
+
+    end
+  end
+end
